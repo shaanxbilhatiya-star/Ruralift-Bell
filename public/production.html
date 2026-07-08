@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ruralift — Production Room</title>
+<link rel="manifest" href="/manifest-production.json">
+<meta name="theme-color" content="#160B44">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <style>
   :root {
     --purple: #5E17EB;
@@ -102,6 +106,10 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
     const socket = io();
     const dot = document.getElementById('dot');
     const statusText = document.getElementById('statusText');
@@ -130,19 +138,59 @@
     function playBell() {
       if (!audioCtx) return;
       const now = audioCtx.currentTime;
-      // Two-tone bell strike using layered oscillators for a metallic ring
-      [880, 1320, 1760].forEach((freq, i) => {
+      const master = audioCtx.createGain();
+      master.gain.value = 0.9;
+      master.connect(audioCtx.destination);
+
+      // Real bells ring with inharmonic partials (not simple integer multiples).
+      // These ratios approximate a small service/hand bell's overtone structure.
+      const fundamental = 660; // E5-ish, bright "ding" pitch
+      const partials = [
+        { ratio: 1.00, gain: 1.00, decay: 2.2 },
+        { ratio: 2.00, gain: 0.55, decay: 1.8 },
+        { ratio: 2.76, gain: 0.35, decay: 1.4 },
+        { ratio: 3.36, gain: 0.22, decay: 1.1 },
+        { ratio: 4.10, gain: 0.14, decay: 0.9 },
+        { ratio: 5.43, gain: 0.08, decay: 0.6 },
+        { ratio: 0.50, gain: 0.30, decay: 2.6 } // sub "hum" tone gives body/warmth
+      ];
+
+      partials.forEach(p => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.exponentialRampToValueAtTime(0.35 / (i + 1), now + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
-        osc.connect(gain).connect(audioCtx.destination);
+        osc.frequency.value = fundamental * p.ratio;
+        // tiny random detune per partial = natural shimmer, avoids robotic sound
+        osc.detune.value = (Math.random() - 0.5) * 6;
+
+        const peak = p.gain;
+        gain.gain.setValueAtTime(0.0001, now);
+        // fast sharp attack like a physical strike
+        gain.gain.exponentialRampToValueAtTime(peak, now + 0.006);
+        // natural exponential decay tail
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+
+        osc.connect(gain).connect(master);
         osc.start(now);
-        osc.stop(now + 1.5);
+        osc.stop(now + p.decay + 0.1);
       });
+
+      // Short noise burst at the very start = the "strike" transient (mallet hitting metal)
+      const bufferSize = audioCtx.sampleRate * 0.02;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'highpass';
+      noiseFilter.frequency.value = 2000;
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.25;
+      noise.connect(noiseFilter).connect(noiseGain).connect(master);
+      noise.start(now);
     }
 
     function ringSequence() {
