@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ruralift — Reception Bell</title>
+<style>
+  :root {
+    --purple: #5E17EB;
+    --navy: #160B44;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, var(--navy), #241259 60%, var(--purple));
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    text-align: center;
+    padding: 20px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .logo {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .sub {
+    opacity: 0.75;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  #bellBtn {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #7a3ffb, var(--purple));
+    border: none;
+    box-shadow: 0 0 0 8px rgba(255,255,255,0.06), 0 20px 40px rgba(0,0,0,0.4);
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    user-select: none;
+  }
+  #bellBtn:active {
+    transform: scale(0.94);
+    box-shadow: 0 0 0 8px rgba(255,255,255,0.12), 0 8px 20px rgba(0,0,0,0.4);
+  }
+  #bellBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .icon {
+    font-size: 60px;
+    display: block;
+    margin-bottom: 8px;
+  }
+  #status {
+    margin-top: 28px;
+    font-size: 15px;
+    min-height: 20px;
+    opacity: 0.9;
+  }
+  #dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: #ff5555;
+    vertical-align: middle;
+  }
+  #dot.connected { background: #4ade80; }
+</style>
+</head>
+<body>
+  <div class="logo">RURALIFT</div>
+  <div class="sub">Reception Call Bell</div>
+
+  <button id="bellBtn">
+    <span class="icon">🔔</span>
+    RING BELL
+  </button>
+
+  <div id="status"><span id="dot"></span><span id="statusText">Connecting...</span></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const btn = document.getElementById('bellBtn');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('statusText');
+
+    socket.on('connect', () => {
+      dot.classList.add('connected');
+      statusText.textContent = 'Connected';
+    });
+
+    socket.on('disconnect', () => {
+      dot.classList.remove('connected');
+      statusText.textContent = 'Disconnected — reconnecting...';
+    });
+
+    btn.addEventListener('click', () => {
+      socket.emit('ring');
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.innerHTML = '<span class="icon">✅</span>SENT';
+      statusText.textContent = 'Bell sent to production room';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        statusText.textContent = 'Connected';
+      }, 1500);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruralift — Production Room</title>
+<style>
+  :root {
+    --purple: #5E17EB;
+    --navy: #160B44;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, var(--navy), #241259 60%, var(--purple));
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    text-align: center;
+    padding: 20px;
+    transition: background 0.3s ease;
+  }
+  body.ringing {
+    animation: flash 0.6s ease-in-out infinite;
+  }
+  @keyframes flash {
+    0%, 100% { background: linear-gradient(160deg, var(--navy), #241259 60%, var(--purple)); }
+    50% { background: linear-gradient(160deg, var(--purple), #7a3ffb 60%, var(--navy)); }
+  }
+  .logo {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .sub {
+    opacity: 0.75;
+    font-size: 15px;
+    margin-bottom: 50px;
+  }
+  .bellIcon {
+    font-size: 110px;
+    margin-bottom: 20px;
+    transition: transform 0.15s ease;
+  }
+  .bellIcon.shake {
+    animation: shake 0.4s ease infinite;
+  }
+  @keyframes shake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-15deg); }
+    75% { transform: rotate(15deg); }
+  }
+  #msg {
+    font-size: 22px;
+    font-weight: 600;
+    min-height: 30px;
+  }
+  #status {
+    margin-top: 30px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+  #dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: #ff5555;
+    vertical-align: middle;
+  }
+  #dot.connected { background: #4ade80; }
+  #enableBtn {
+    margin-top: 40px;
+    padding: 14px 28px;
+    font-size: 15px;
+    border-radius: 30px;
+    border: none;
+    background: #fff;
+    color: var(--navy);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="logo">RURALIFT</div>
+  <div class="sub">Production Room Display</div>
+
+  <div class="bellIcon" id="bellIcon">🔕</div>
+  <div id="msg">Waiting for calls...</div>
+
+  <button id="enableBtn">Tap to Enable Sound</button>
+
+  <div id="status"><span id="dot"></span><span id="statusText">Connecting...</span></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('statusText');
+    const bellIcon = document.getElementById('bellIcon');
+    const msg = document.getElementById('msg');
+    const enableBtn = document.getElementById('enableBtn');
+    const body = document.body;
+
+    let audioCtx = null;
+    let soundEnabled = false;
+
+    enableBtn.addEventListener('click', () => {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // unlock audio with a silent blip
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0;
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.01);
+      soundEnabled = true;
+      enableBtn.classList.add('hidden');
+      statusText.textContent = 'Sound enabled — waiting for calls...';
+    });
+
+    function playBell() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      // Two-tone bell strike using layered oscillators for a metallic ring
+      [880, 1320, 1760].forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.35 / (i + 1), now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 1.5);
+      });
+    }
+
+    function ringSequence() {
+      // Ring 3 times, spaced out
+      let count = 0;
+      const maxRings = 3;
+      body.classList.add('ringing');
+      bellIcon.classList.add('shake');
+      bellIcon.textContent = '🔔';
+      msg.textContent = 'Reception is calling!';
+
+      const interval = setInterval(() => {
+        playBell();
+        count++;
+        if (count >= maxRings) {
+          clearInterval(interval);
+          setTimeout(() => {
+            body.classList.remove('ringing');
+            bellIcon.classList.remove('shake');
+            bellIcon.textContent = '🔕';
+            msg.textContent = 'Waiting for calls...';
+          }, 1500);
+        }
+      }, 900);
+      playBell(); // first ring immediately
+    }
+
+    socket.on('connect', () => {
+      dot.classList.add('connected');
+      statusText.textContent = soundEnabled ? 'Sound enabled — waiting for calls...' : 'Connected — tap to enable sound';
+    });
+
+    socket.on('disconnect', () => {
+      dot.classList.remove('connected');
+      statusText.textContent = 'Disconnected — reconnecting...';
+    });
+
+    socket.on('bell-ring', () => {
+      ringSequence();
+    });
+  </script>
+</body>
+</html>
